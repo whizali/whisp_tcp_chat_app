@@ -1,0 +1,7 @@
+# This project primarily uses Python standard library modules
+# No external dependencies are required for the basic functionality
+
+# For optional features:
+# cryptography>=3.4.0  # For message encryption (optional)
+# PyQt5>=5.15.0        # For GUI implementation (optional)
+# tkinter              # Built-in GUI library (optional)
