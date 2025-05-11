@@ -149,14 +149,41 @@ def handle_command(client_socket, command):
 
     elif cmd == '/whisper':
         # Send a private message
-        whisper_parts = args.split(' ', 1)
-        if len(whisper_parts) < 2:
+        # First, check if we have enough arguments
+        if ' ' not in args:
             client_socket.send(f"{timestamp} [SERVER] Usage: /whisper <username> <message>".encode('utf-8'))
             return True
 
-        recipient = whisper_parts[0]
-        message = whisper_parts[1]
-        send_private_message(message, client_socket, recipient)
+        # Special handling for usernames with spaces (like "User 2")
+        # Try to find a matching username from our clients dictionary
+        recipient = None
+        message = None
+
+        # Get all usernames
+        all_usernames = [username for _, username in clients.values() if username]
+
+        # Sort usernames by length (descending) to match longer usernames first
+        all_usernames.sort(key=len, reverse=True)
+
+        # Try to find a matching username at the beginning of args
+        for username in all_usernames:
+            if args.startswith(username + ' '):
+                recipient = username
+                message = args[len(username) + 1:]  # +1 for the space
+                break
+
+        # If no username was found, try the traditional approach
+        if recipient is None:
+            whisper_parts = args.split(' ', 1)
+            recipient = whisper_parts[0]
+            message = whisper_parts[1] if len(whisper_parts) > 1 else ""
+
+        # Send the private message
+        if message:
+            send_private_message(message, client_socket, recipient)
+        else:
+            client_socket.send(f"{timestamp} [SERVER] Usage: /whisper <username> <message>".encode('utf-8'))
+            return True
 
     elif cmd == '/exit':
         # Client wants to exit - this will be handled in the main loop
