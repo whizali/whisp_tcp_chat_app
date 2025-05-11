@@ -6,7 +6,6 @@ Computer Networks Course Project
 This module implements the server side of a TCP-based chat application using select-based I/O multiplexing.
 It includes enhanced features like username registration, timestamped messages, and command support.
 """
-
 import socket
 import select
 import sys
@@ -25,6 +24,9 @@ clients = {}
 # Dictionary to store pending username registrations
 # Key: socket object, Value: True/False (waiting for username)
 pending_registrations = {}
+
+# Counter for assigning default usernames
+user_counter = 0
 
 # Available commands
 COMMANDS = {
@@ -205,29 +207,38 @@ def handle_new_connection(server_socket):
     Returns:
         The new client socket object
     """
+    global user_counter
+
     # Accept the connection
     client_socket, client_address = server_socket.accept()
 
     # Set the socket to non-blocking mode
     client_socket.setblocking(0)
 
-    # Store client information (without username initially)
+    # Increment user counter and assign default username
+    user_counter += 1
+    default_username = f"User {user_counter}"
+
+    # Store client information with default username
     client_id = f"{client_address[0]}:{client_address[1]}"
-    clients[client_socket] = (client_address, None)
+    clients[client_socket] = (client_address, default_username)
 
-    # Mark this client as pending username registration
-    pending_registrations[client_socket] = True
+    # No need to mark as pending since we've assigned a default username
+    # But we'll still allow the user to change it
 
-    print(f"[+] Accepted connection from {client_id}")
+    print(f"[+] Accepted connection from {client_id} (assigned username: {default_username})")
 
     # Send a welcome message to the new client
     timestamp = get_timestamp()
     welcome_message = f"{timestamp} [SERVER] Welcome to the TCP Chat Server! There are {len(clients)} clients connected."
     client_socket.send(welcome_message.encode('utf-8'))
 
-    # Ask for a username
-    username_prompt = f"{timestamp} [SERVER] Please enter your username:"
-    client_socket.send(username_prompt.encode('utf-8'))
+    # Inform the user of their default username and how to change it
+    username_message = f"{timestamp} [SERVER] You have been assigned the username '{default_username}'. You can change it using the /nick command."
+    client_socket.send(username_message.encode('utf-8'))
+
+    # Notify other clients about the new user
+    broadcast_message(f"[SERVER] User '{default_username}' has joined the chat.", client_socket)
 
     return client_socket
 
@@ -254,34 +265,6 @@ def handle_client_message(client_socket):
 
         # Decode the received data
         message = data.decode('utf-8').strip()
-
-        # Check if this client is waiting for username registration
-        if client_socket in pending_registrations and pending_registrations[client_socket]:
-            # This is a username registration
-            username = message
-
-            # Check if username is already taken
-            for _, (_, user) in clients.items():
-                if user == username:
-                    timestamp = get_timestamp()
-                    client_socket.send(f"{timestamp} [SERVER] Username '{username}' is already taken. Please choose another:".encode('utf-8'))
-                    return True
-
-            # Update client information with the username
-            clients[client_socket] = (client_address, username)
-
-            # Remove from pending registrations
-            del pending_registrations[client_socket]
-
-            # Notify the client
-            timestamp = get_timestamp()
-            client_socket.send(f"{timestamp} [SERVER] Welcome, {username}! Type /help for available commands.".encode('utf-8'))
-
-            # Notify other clients
-            broadcast_message(f"[SERVER] User '{username}' has joined the chat.", client_socket)
-
-            print(f"[*] Client {client_id} registered as '{username}'")
-            return True
 
         # Check if this is a command
         if message.startswith('/'):

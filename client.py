@@ -28,7 +28,7 @@ COMMANDS = {
     '/list': 'List all connected users',
     '/whisper': 'Send a private message to a user: /whisper <username> <message>',
     '/exit': 'Disconnect from the server',
-    '/nick': 'Change your username: /nick <new_username>'
+    '/nick': 'Change your username: /nick <new_username> (you are assigned a default username when you connect)'
 }
 
 def get_timestamp():
@@ -49,7 +49,7 @@ def receive_messages(client_socket):
     Args:
         client_socket: Socket connected to the server
     """
-    global running
+    global running, username
 
     try:
         while running:
@@ -65,8 +65,22 @@ def receive_messages(client_socket):
 
                 # Decode and print the received message
                 message = data.decode('utf-8')
-                # Print the message with a newline to avoid overwriting the input prompt
-                print(f"\n{message}")
+
+                # Check if this is the default username assignment message
+                if "You have been assigned the username '" in message and username is None:
+                    # Extract the default username from the message
+                    start_index = message.find("You have been assigned the username '") + len("You have been assigned the username '")
+                    end_index = message.find("'.", start_index)
+                    if start_index > 0 and end_index > start_index:
+                        username = message[start_index:end_index]
+                        print(f"\n{message}")
+                        print(f"{get_timestamp()} [CLIENT] Default username set to '{username}'")
+                    else:
+                        print(f"\n{message}")
+                else:
+                    # Print the message with a newline to avoid overwriting the input prompt
+                    print(f"\n{message}")
+
                 # Reprint the input prompt
                 print("Enter message (or '/help' for commands): ", end='', flush=True)
 
@@ -131,11 +145,8 @@ def main():
             # Send the message to the server
             client_socket.send(message.encode('utf-8'))
 
-            # If this is a username registration or change, update local username
-            if username is None and not message.startswith('/'):
-                username = message
-                print(f"{get_timestamp()} [CLIENT] Username set to '{username}'")
-            elif message.startswith('/nick '):
+            # If this is a username change, update local username
+            if message.startswith('/nick '):
                 parts = message.split(' ', 1)
                 if len(parts) > 1:
                     username = parts[1]
