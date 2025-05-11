@@ -77,6 +77,21 @@ def receive_messages(client_socket):
                         print(f"{get_timestamp()} [CLIENT] Default username set to '{username}'")
                     else:
                         print(f"\n{message}")
+                # Check if this is a successful username change confirmation
+                elif "Your username has been changed to '" in message:
+                    # Extract the new username from the message
+                    start_index = message.find("Your username has been changed to '") + len("Your username has been changed to '")
+                    end_index = message.find("'.", start_index)
+                    if start_index > 0 and end_index > start_index:
+                        username = message[start_index:end_index]
+                        print(f"\n{message}")
+                        print(f"{get_timestamp()} [CLIENT] Username successfully changed to '{username}'")
+                    else:
+                        print(f"\n{message}")
+                # Check if this is a username already taken message
+                elif "Username '" in message and "' is already taken" in message:
+                    print(f"\n{message}")
+                    print(f"{get_timestamp()} [CLIENT] Username change failed - already taken")
                 else:
                     # Print the message with a newline to avoid overwriting the input prompt
                     print(f"\n{message}")
@@ -145,12 +160,14 @@ def main():
             # Send the message to the server
             client_socket.send(message.encode('utf-8'))
 
-            # If this is a username change, update local username
+            # For /nick commands, we'll let the server response handler update the username
+            # The username will only be updated when the server confirms the change
             if message.startswith('/nick '):
                 parts = message.split(' ', 1)
                 if len(parts) > 1:
-                    username = parts[1]
-                    print(f"{get_timestamp()} [CLIENT] Username changed to '{username}'")
+                    # Store the requested username temporarily, but don't update yet
+                    requested_username = parts[1]
+                    print(f"{get_timestamp()} [CLIENT] Requesting username change to '{requested_username}'...")
 
     except ConnectionRefusedError:
         print(f"[!] Connection refused. Make sure the server is running at {SERVER_HOST}:{SERVER_PORT}")
