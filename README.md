@@ -1,6 +1,6 @@
 # TCP Chat Application
 
-A Python-based TCP chat application developed for the Computer Networks course. This application demonstrates fundamental networking concepts including TCP socket programming, client-server architecture, and non-blocking I/O with select().
+A Python-based TCP chat application project for the Computer Networks course anduses networking concepts including TCP socket programming, client-server architecture, and non-blocking I/O with select().
 
 ## Overview
 
@@ -209,11 +209,3 @@ tcp_chat_app/
 
 - Python 3.6+
 - Standard library modules: socket, select, threading, datetime, logging
-
-## Future Enhancements
-
-- **GUI Implementation**: A graphical user interface using Tkinter or PyQt
-- **Message Encryption**: End-to-end encryption for secure communication
-- **File Transfer**: Capability to send and receive files
-- **Chat Rooms**: Support for multiple chat rooms or channels
-- **User Authentication**: Login system with passwords
