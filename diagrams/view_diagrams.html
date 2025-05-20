@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCP Chat Application - Flow Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .diagram-container {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .mermaid {
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background-color: #eee;
+            border: none;
+            cursor: pointer;
+            margin-right: 5px;
+            border-radius: 5px 5px 0 0;
+        }
+        .tab.active {
+            background-color: #007bff;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TCP Chat Application - Flow Diagrams</h1>
+
+        <div class="tabs">
+            <button class="tab active" onclick="openTab(event, 'flow')">Application Flow</button>
+            <button class="tab" onclick="openTab(event, 'communication')">Communication Flow</button>
+        </div>
+
+        <div id="flow" class="tab-content active">
+            <h2>Application Flow Diagram</h2>
+            <p>This diagram shows the overall flow of the application, including server initialization, client connection process, message handling, command processing, and disconnection process.</p>
+            <div class="diagram-container">
+                <div class="mermaid">
+graph TD
+    %% Server Initialization
+    subgraph "Server Initialization"
+        A[Start Server] --> B[Create TCP Socket]
+        B --> C[Set Socket to Non-blocking Mode]
+        C --> D[Bind to Host:Port]
+        D --> E[Listen for Connections]
+        E --> F[Initialize Socket Monitoring]
+    end
+
+    %% Client Connection
+    subgraph "Client Connection Process"
+        G[Client Starts] --> H[Create TCP Socket]
+        H --> I[Connect to Server]
+        I --> J[Start Receive Thread]
+        J --> K[Wait for Username Input]
+        K --> L[Send Username to Server]
+    end
+
+    %% Server Accepting Connection
+    subgraph "Server Accepting Connection"
+        E --> M[Accept New Connection]
+        M --> N[Add Client to Monitoring List]
+        N --> O[Send Welcome Message]
+        O --> P[Wait for Username]
+        P --> Q[Validate Username]
+        Q --> R[Store Username]
+        R --> S[Notify All Clients]
+    end
+
+    %% Message Flow
+    subgraph "Message Flow"
+        %% Client to Server
+        T[Client Types Message] --> U[Send to Server]
+        U --> V[Server Receives Message]
+
+        %% Server Processing
+        V --> W{Is Command?}
+        W -- Yes --> X[Process Command]
+        W -- No --> Y[Format with Timestamp & Username]
+
+        %% Server to Clients
+        Y --> Z[Broadcast to All Other Clients]
+        X --> AA{Command Type}
+        AA -- /help --> AB[Send Help to Requesting Client]
+        AA -- /list --> AC[Send User List to Requesting Client]
+        AA -- /whisper --> AD[Send Private Message to Recipient]
+        AA -- /nick --> AE[Change Username]
+        AA -- /exit --> AF[Disconnect Client]
+    end
+
+    %% Disconnection Process
+    subgraph "Disconnection Process"
+        AF --> AG[Remove from Monitoring List]
+        AG --> AH[Remove Client Information]
+        AH --> AI[Notify Other Clients]
+        AI --> AJ[Close Client Socket]
+    end
+
+    %% Client Receiving
+    subgraph "Client Message Reception"
+        AK[Receive Thread] --> AL[Receive Data from Server]
+        AL --> AM[Decode Message]
+        AM --> AN[Display to User]
+        AN --> AK
+    end
+
+    %% Connect the subgraphs
+    F -.-> M
+    L -.-> P
+    Z -.-> AL
+    AB -.-> AL
+    AC -.-> AL
+    AD -.-> AL
+    AE -.-> AL
+
+    %% Styling
+    classDef server fill:#f96,stroke:#333,stroke-width:2px
+    classDef client fill:#69f,stroke:#333,stroke-width:2px
+    classDef process fill:#9f6,stroke:#333,stroke-width:2px
+
+    class A,B,C,D,E,F,M,N,O,P,Q,R,S,V,W,X,Y,Z,AA,AB,AC,AD,AE,AF,AG,AH,AI,AJ server
+    class G,H,I,J,K,L,T,U,AK,AL,AM,AN client
+    class W,AA process
+                </div>
+            </div>
+        </div>
+
+        <div id="communication" class="tab-content">
+            <h2>Communication Flow Diagram</h2>
+            <p>This sequence diagram illustrates the communication protocol between the server and multiple clients, showing connection establishment, username registration, message exchange, command processing, and disconnection handling.</p>
+            <div class="diagram-container">
+                <div class="mermaid">
+sequenceDiagram
+    participant Server
+    participant Client1 as Client 1
+    participant Client2 as Client 2
+    participant Client3 as Client 3
+
+    %% Server Initialization
+    Note over Server: Server starts and listens on port 5555
+
+    %% Client 1 Connection
+    Client1->>Server: Connect to server
+    Server->>Client1: Welcome message
+    Client1->>Server: Send username "Alice"
+    Server->>Client1: Username accepted
+    Server->>Client2: User "Alice" has joined
+    Server->>Client3: User "Alice" has joined
+
+    %% Client 2 Connection
+    Client2->>Server: Connect to server
+    Server->>Client2: Welcome message
+    Client2->>Server: Send username "Bob"
+    Server->>Client2: Username accepted
+    Server->>Client1: User "Bob" has joined
+    Server->>Client3: User "Bob" has joined
+
+    %% Client 3 Connection
+    Client3->>Server: Connect to server
+    Server->>Client3: Welcome message
+    Client3->>Server: Send username "Charlie"
+    Server->>Client3: Username accepted
+    Server->>Client1: User "Charlie" has joined
+    Server->>Client2: User "Charlie" has joined
+
+    %% Regular Message
+    Client1->>Server: "Hello everyone!"
+    Note over Server: Add timestamp and format message
+    Server->>Client2: "[HH:MM:SS] [Alice] Hello everyone!"
+    Server->>Client3: "[HH:MM:SS] [Alice] Hello everyone!"
+
+    %% Command: /list
+    Client2->>Server: "/list"
+    Note over Server: Process /list command
+    Server->>Client2: "[HH:MM:SS] [SERVER] Connected users (3):\n- Alice\n- Bob\n- Charlie"
+
+    %% Private Message
+    Client3->>Server: "/whisper Bob Secret message"
+    Note over Server: Process /whisper command
+    Server->>Client2: "[HH:MM:SS] [PRIVATE from Charlie] Secret message"
+
+    %% Change Username
+    Client1->>Server: "/nick Alice2"
+    Note over Server: Process /nick command
+    Server->>Client1: "[HH:MM:SS] [SERVER] Username changed to 'Alice2'"
+    Server->>Client2: "[HH:MM:SS] [SERVER] User 'Alice' is now known as 'Alice2'"
+    Server->>Client3: "[HH:MM:SS] [SERVER] User 'Alice' is now known as 'Alice2'"
+
+    %% Disconnection
+    Client2->>Server: "/exit"
+    Note over Server: Process /exit command
+    Server->>Client2: "[HH:MM:SS] [SERVER] Goodbye!"
+    Note over Client2: Disconnects
+    Server->>Client1: "[HH:MM:SS] [SERVER] User 'Bob' has left the chat"
+    Server->>Client3: "[HH:MM:SS] [SERVER] User 'Bob' has left the chat"
+
+    %% Error Handling
+    Client3->>Server: "/whisper Unknown Hello"
+    Note over Server: Process command with error
+    Server->>Client3: "[HH:MM:SS] [SERVER] Error: User 'Unknown' not found"
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: false,
+                htmlLabels: true
+            }
+        });
+
+        // Tab functionality
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+
+            // Hide all tab content
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].className = tabcontent[i].className.replace(" active", "");
+            }
+
+            // Remove active class from all tabs
+            tablinks = document.getElementsByClassName("tab");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+
+            // Show the current tab and add active class
+            document.getElementById(tabName).className += " active";
+            evt.currentTarget.className += " active";
+
+            // Re-render Mermaid diagrams
+            mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+        }
+    </script>
+</body>
+</html>

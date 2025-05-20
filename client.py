@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
 """
 TCP Chat Application - Client
-Computer Networks Course Project
 
 This module implements the client side of a TCP-based chat application.
 It connects to the server and supports username registration, commands, and private messaging.
@@ -9,31 +7,27 @@ It connects to the server and supports username registration, commands, and priv
 
 import socket
 import threading
-import sys
-import time
-from datetime import datetime
+import logging
 
-# Client configuration
-SERVER_HOST = '127.0.0.1'  # The server's hostname or IP address
-SERVER_PORT = 5555        # The port used by the server
-BUFFER_SIZE = 1024        # Maximum message size
+# Import common utilities and constants
+from common import (
+    HOST as SERVER_HOST,
+    PORT as SERVER_PORT,
+    BUFFER_SIZE,
+    COMMANDS
+)
+
+# Configure client logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [CLIENT] %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger('client')
 
 # Global variables
 running = True  # Flag to control the receive thread
 username = None  # The client's username
-
-# Available commands (for local help)
-COMMANDS = {
-    '/help': 'Show available commands',
-    '/list': 'List all connected users',
-    '/whisper': 'Send a private message to a user: /whisper <username> <message>',
-    '/exit': 'Disconnect from the server',
-    '/nick': 'Change your username: /nick <new_username> (you are assigned a default username when you connect)'
-}
-
-def get_timestamp():
-    """Get a formatted timestamp for messages."""
-    return datetime.now().strftime('[%H:%M:%S]')
 
 def display_help():
     """Display help information about available commands."""
@@ -60,13 +54,14 @@ def receive_messages(client_socket):
                 # If no data is received, the server has disconnected
                 if not data:
                     print("\n[!] Server disconnected")
+                    logger.warning("Server disconnected")
                     running = False
                     break
 
-                # Decode and print the received message
+                # Decode the received message
                 message = data.decode('utf-8')
 
-                # Check if this is the default username assignment message
+                # Process username assignment/change messages
                 if "You have been assigned the username '" in message and username is None:
                     # Extract the default username from the message
                     start_index = message.find("You have been assigned the username '") + len("You have been assigned the username '")
@@ -74,9 +69,10 @@ def receive_messages(client_socket):
                     if start_index > 0 and end_index > start_index:
                         username = message[start_index:end_index]
                         print(f"\n{message}")
-                        print(f"{get_timestamp()} [CLIENT] Default username set to '{username}'")
+                        logger.info(f"Default username set to '{username}'")
                     else:
                         print(f"\n{message}")
+
                 # Check if this is a successful username change confirmation
                 elif "Your username has been changed to '" in message:
                     # Extract the new username from the message
@@ -85,13 +81,22 @@ def receive_messages(client_socket):
                     if start_index > 0 and end_index > start_index:
                         username = message[start_index:end_index]
                         print(f"\n{message}")
-                        print(f"{get_timestamp()} [CLIENT] Username successfully changed to '{username}'")
+                        logger.info(f"Username successfully changed to '{username}'")
                     else:
                         print(f"\n{message}")
-                # Check if this is a username already taken message
-                elif "Username '" in message and "' is already taken" in message:
+
+                # Handle error messages
+                elif "[ERROR]" in message:
                     print(f"\n{message}")
-                    print(f"{get_timestamp()} [CLIENT] Username change failed - already taken")
+                    # Log client-side but don't show server logs
+                    if "Username '" in message and "' is already taken" in message:
+                        logger.warning("Username change failed - already taken")
+
+                # Handle private messages
+                elif "[PRIVATE" in message:
+                    print(f"\n{message}")
+
+                # Handle regular chat messages
                 else:
                     # Print the message with a newline to avoid overwriting the input prompt
                     print(f"\n{message}")
@@ -101,18 +106,21 @@ def receive_messages(client_socket):
 
             except ConnectionResetError:
                 print("\n[!] Connection reset by server")
+                logger.error("Connection reset by server")
                 running = False
                 break
 
     except Exception as e:
         print(f"\n[!] Error receiving messages: {e}")
+        logger.error(f"Error receiving messages: {e}")
         running = False
 
 def main():
     """Main function to start the client."""
     global running, username
 
-    print(f"[*] Connecting to TCP Chat Server at {SERVER_HOST}:{SERVER_PORT}")
+    logger.info(f"Connecting to TCP Chat Server at {SERVER_HOST}:{SERVER_PORT}")
+    print(f"Connecting to TCP Chat Server at {SERVER_HOST}:{SERVER_PORT}")
 
     try:
         # Create a TCP socket
@@ -123,7 +131,8 @@ def main():
 
         # Connect to the server
         client_socket.connect((SERVER_HOST, SERVER_PORT))
-        print(f"[+] Connected to server at {SERVER_HOST}:{SERVER_PORT}")
+        logger.info(f"Connected to server at {SERVER_HOST}:{SERVER_PORT}")
+        print(f"Connected to server at {SERVER_HOST}:{SERVER_PORT}")
 
         # Reset the timeout to None (blocking mode) for normal operation
         client_socket.settimeout(None)
@@ -153,7 +162,8 @@ def main():
             if message.lower() == '/exit':
                 # Send exit command to server
                 client_socket.send(message.encode('utf-8'))
-                print(f"{get_timestamp()} [CLIENT] Disconnecting...")
+                logger.info("Disconnecting...")
+                print("Disconnecting...")
                 running = False
                 break
 
@@ -167,23 +177,30 @@ def main():
                 if len(parts) > 1:
                     # Store the requested username temporarily, but don't update yet
                     requested_username = parts[1]
-                    print(f"{get_timestamp()} [CLIENT] Requesting username change to '{requested_username}'...")
+                    logger.info(f"Requesting username change to '{requested_username}'...")
 
     except ConnectionRefusedError:
-        print(f"[!] Connection refused. Make sure the server is running at {SERVER_HOST}:{SERVER_PORT}")
+        error_msg = f"Connection refused. Make sure the server is running at {SERVER_HOST}:{SERVER_PORT}"
+        logger.error(error_msg)
+        print(f"[!] {error_msg}")
     except socket.timeout:
-        print(f"[!] Connection attempt timed out. Server might be busy or unreachable.")
+        error_msg = f"Connection attempt timed out. Server might be busy or unreachable."
+        logger.error(error_msg)
+        print(f"[!] {error_msg}")
     except KeyboardInterrupt:
+        logger.info("Client interrupted by user")
         print("\n[!] Client interrupted by user")
         running = False
     except Exception as e:
+        logger.error(f"Error: {e}")
         print(f"[!] Error: {e}")
         running = False
     finally:
         # Close the client socket
         if 'client_socket' in locals() and client_socket:
             client_socket.close()
-        print("[*] Disconnected from server")
+        logger.info("Disconnected from server")
+        print("Disconnected from server")
 
 if __name__ == "__main__":
     main()

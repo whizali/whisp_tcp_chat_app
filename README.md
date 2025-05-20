@@ -4,13 +4,14 @@ A Python-based TCP chat application developed for the Computer Networks course. 
 
 ## Overview
 
-This application implements a real-time chat system where multiple clients can connect to a central server, register usernames, send public and private messages, and use various commands. The system uses TCP sockets for reliable communication and implements select()-based I/O multiplexing for efficient handling of multiple client connections.
+This application implements a real-time chat system where multiple clients can connect to a central server, register usernames, send public and private messages, and use various commands. The system uses TCP sockets for reliable communication and implements select()-based I/O multiplexing st the server side for efficient handling of multiple client connections and threading at client side for parralel and simultaneous sending and receiving of messages.
 
 ## Features
 
 - **TCP-based Client-Server Communication**: Reliable, connection-oriented messaging
 - **Multiple Client Support**: Handles numerous concurrent client connections
-- **Username Registration**: Clients can register and change usernames
+- **Automatic Username Assignment**: Clients are assigned default usernames (User 1, User 2, etc.) upon connection
+- **Username Customization**: Clients can change their default usernames using the `/nick` command
 - **Timestamped Messages**: All messages include timestamps for chronological tracking
 - **Command Support**: Implements various commands for enhanced functionality:
   - `/help` - Display available commands
@@ -28,6 +29,13 @@ This application implements a real-time chat system where multiple clients can c
 The application uses TCP (Transmission Control Protocol) sockets for reliable, connection-oriented communication:
 
 - **Connection Establishment**: Implements the TCP three-way handshake process
+  **3-way handshake process happening at OS TCP/IP level**:
+  - Client sends a SYN packet to the server in client_socket.connect((SERVER_HOST, SERVER_PORT)) call. the SYN flag is set to 1, indicating a request to synchronize sequence numbers and is used to start the connection process.
+  -  server_socket.listen(5) state listens for incoming connections. When server_socket.accept() is called (inside  handle_new_connection), the server's TCP stack sends an acknowledgment (ACK) flag set to 1 in the SYN-ACK packet back to the client.
+  - Client sends an ACK packet to complete the handshake in response of the SYN-ACK packet. When this ACK is received, the connection is established. The accept() call completes, returning a new socket for the established connection.
+
+  **In the TCP Chat Application, the SYN and ACK flags are handled automatically by the operating system's TCP/IP stack when socket operations like connect(), accept(), and send()/recv() are called, enabling reliable communication between the chat clients and server.**
+
 - **Reliable Data Transfer**: Ensures messages are delivered in order without loss
 - **Connection Termination**: Properly closes connections to free resources
 
@@ -80,12 +88,12 @@ The application implements a simple text-based protocol:
 3. Upon successful connection:
    - Server accepts the connection
    - Server adds the client socket to the monitoring list
+   - Server assigns a default username (User 1, User 2, etc.)
    - Server sends a welcome message
-   - Server prompts for username registration
-4. Client enters a username
-5. Server validates the username (checks for duplicates)
-6. Server associates the username with the client socket
-7. Server notifies all clients about the new user
+   - Server informs the client of their default username
+4. Server associates the default username with the client socket
+5. Server notifies all clients about the new user
+6. Client can optionally change their username using the `/nick` command
 
 ### Message Exchange
 
@@ -115,6 +123,22 @@ The application implements a simple text-based protocol:
 
 ## Implementation Details
 
+### Common Module (`common.py`)
+
+- **Shared Constants**:
+  - Network configuration (host, port, buffer size)
+  - Command definitions
+  - Message type definitions
+
+- **Message Formatting**:
+  - Consistent message formatting across client and server
+  - Timestamp generation
+  - Message type categorization (chat, server, private, etc.)
+
+- **Utilities**:
+  - Helper functions for common operations
+  - Network communication utilities
+
 ### Server Side (`server.py`)
 
 - **Socket Management**:
@@ -124,13 +148,14 @@ The application implements a simple text-based protocol:
 
 - **Client Management**:
   - Stores client information (address, username) in a dictionary
-  - Tracks pending username registrations
   - Handles client disconnections
+  - Assigns default usernames
 
 - **Message Handling**:
   - Receives and processes messages from clients
-  - Formats messages with timestamps and sender information
+  - Formats messages with appropriate types
   - Broadcasts messages to appropriate recipients
+  - Server-side logging separate from client communication
 
 - **Command Processing**:
   - Parses and executes commands
@@ -145,8 +170,9 @@ The application implements a simple text-based protocol:
 
 - **Message Handling**:
   - Uses a separate thread for receiving messages
-  - Formats and sends user input to the server
-  - Displays received messages
+  - Sends user input to the server
+  - Displays received messages without server-side logs
+  - Client-side logging separate from user interface
 
 - **User Interface**:
   - Provides command-line interface for user interaction
@@ -173,14 +199,16 @@ python client.py
 tcp_chat_app/
 ├── server.py - Server implementation with select()-based I/O
 ├── client.py - Client implementation with threading for message reception
+├── common.py - Shared utilities, constants, and message formatting
 ├── README.md - Documentation
+├── diagrams/ - Visual documentation of application flow
 └── requirements.txt - Dependencies
 ```
 
 ## Requirements
 
 - Python 3.6+
-- Standard library modules: socket, select, threading, datetime
+- Standard library modules: socket, select, threading, datetime, logging
 
 ## Future Enhancements
 

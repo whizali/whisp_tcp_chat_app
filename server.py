@@ -1,45 +1,33 @@
-#!/usr/bin/env python3
 """
 TCP Chat Application - Server
-Computer Networks Course Project
 
 This module implements the server side of a TCP-based chat application using select-based I/O multiplexing.
 It includes enhanced features like username registration, timestamped messages, and command support.
 """
 import socket
 import select
-import sys
-import time
-from datetime import datetime
+import logging
 
-# Server configuration
-HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
-PORT = 5555        # Port to listen on (non-privileged ports are > 1023)
-BUFFER_SIZE = 1024  # Maximum message size
+# Import common utilities and constants
+from common import (
+    HOST, PORT, BUFFER_SIZE, COMMANDS,
+    get_timestamp, format_message, MessageType
+)
+
+# Configure server logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [SERVER] %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger('server')
 
 # Dictionary to store client information
 # Key: socket object, Value: (address, username)
 clients = {}
 
-# Dictionary to store pending username registrations
-# Key: socket object, Value: True/False (waiting for username)
-pending_registrations = {}
-
 # Counter for assigning default usernames
 user_counter = 0
-
-# Available commands
-COMMANDS = {
-    '/help': 'Show available commands',
-    '/list': 'List all connected users',
-    '/whisper': 'Send a private message to a user: /whisper <username> <message>',
-    '/exit': 'Disconnect from the server',
-    '/nick': 'Change your username: /nick <new_username>'
-}
-
-def get_timestamp():
-    """Get a formatted timestamp for messages."""
-    return datetime.now().strftime('[%H:%M:%S]')
 
 def get_username(client_socket):
     """Get the username for a client socket."""
@@ -49,24 +37,29 @@ def get_username(client_socket):
         client_address = clients[client_socket][0]
         return f"{client_address[0]}:{client_address[1]}"
 
-def broadcast_message(message, sender_socket=None, include_timestamp=True):
+def broadcast_message(message, sender_socket=None, message_type=MessageType.CHAT):
     """
     Broadcast a message to all connected clients except the sender.
 
     Args:
         message: The message to broadcast
         sender_socket: The socket of the client who sent the message (to avoid echo)
-        include_timestamp: Whether to include a timestamp in the message
+        message_type: Type of message (from MessageType class)
     """
-    if include_timestamp:
-        message = f"{get_timestamp()} {message}"
+    sender = None
+    if sender_socket and message_type == MessageType.CHAT:
+        sender = get_username(sender_socket)
+
+    formatted_message = format_message(message_type, message, sender)
+    logger.info(f"Broadcasting: {message}")
 
     for client_socket in clients:
         # Don't send the message back to the sender
         if client_socket != sender_socket:
             try:
-                client_socket.send(message.encode('utf-8'))
-            except Exception:
+                client_socket.send(formatted_message.encode('utf-8'))
+            except Exception as e:
+                logger.error(f"Failed to send to {get_username(client_socket)}: {e}")
                 # If sending fails, the client might be disconnected
                 # We'll handle this in the main loop
                 pass
@@ -84,7 +77,6 @@ def send_private_message(message, sender_socket, recipient_username):
         True if the message was sent, False otherwise
     """
     sender_username = get_username(sender_socket)
-    timestamp = get_timestamp()
 
     # Find the recipient socket
     recipient_socket = None
@@ -95,20 +87,36 @@ def send_private_message(message, sender_socket, recipient_username):
 
     if recipient_socket:
         try:
-            # Format the private message
-            private_message = f"{timestamp} [PRIVATE FROM {sender_username}] {message}"
-            recipient_socket.send(private_message.encode('utf-8'))
+            # Format and send the private message to recipient
+            to_recipient = format_message(
+                MessageType.PRIVATE,
+                message,
+                sender=sender_username,
+                recipient=recipient_username
+            )
+            recipient_socket.send(to_recipient.encode('utf-8'))
 
             # Also send a confirmation to the sender
-            confirmation = f"{timestamp} [PRIVATE TO {recipient_username}] {message}"
-            sender_socket.send(confirmation.encode('utf-8'))
+            to_sender = format_message(
+                MessageType.PRIVATE,
+                message,
+                sender=sender_username,
+                recipient=recipient_username
+            )
+            sender_socket.send(to_sender.encode('utf-8'))
+
+            logger.info(f"Private message: {sender_username} -> {recipient_username}")
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to send private message: {e}")
             return False
     else:
         # User not found
-        error_message = f"{timestamp} [SERVER] User '{recipient_username}' not found."
-        sender_socket.send(error_message.encode('utf-8'))
+        error_msg = format_message(
+            MessageType.ERROR,
+            f"User '{recipient_username}' not found."
+        )
+        sender_socket.send(error_msg.encode('utf-8'))
         return False
 
 def handle_command(client_socket, command):
@@ -129,29 +137,31 @@ def handle_command(client_socket, command):
     cmd = parts[0].lower()
     args = parts[1] if len(parts) > 1 else ""
 
-    timestamp = get_timestamp()
     username = get_username(client_socket)
 
     if cmd == '/help':
         # Send help information
-        help_text = f"{timestamp} [SERVER] Available commands:\n"
+        help_text = "Available commands:\n"
         for cmd, desc in COMMANDS.items():
             help_text += f"  {cmd} - {desc}\n"
-        client_socket.send(help_text.encode('utf-8'))
+        client_socket.send(format_message(MessageType.COMMAND_RESULT, help_text).encode('utf-8'))
 
     elif cmd == '/list':
         # List all connected users
-        user_list = f"{timestamp} [SERVER] Connected users ({len(clients)}):\n"
+        user_list = f"Connected users ({len(clients)}):\n"
         for _, (_, user) in enumerate(clients.values()):
             if user:  # Only list users who have registered a username
                 user_list += f"  - {user}\n"
-        client_socket.send(user_list.encode('utf-8'))
+        client_socket.send(format_message(MessageType.COMMAND_RESULT, user_list).encode('utf-8'))
 
     elif cmd == '/whisper':
         # Send a private message
         # First, check if we have enough arguments
         if ' ' not in args:
-            client_socket.send(f"{timestamp} [SERVER] Usage: /whisper <username> <message>".encode('utf-8'))
+            client_socket.send(format_message(
+                MessageType.ERROR,
+                "Usage: /whisper <username> <message>"
+            ).encode('utf-8'))
             return True
 
         # Special handling for usernames with spaces (like "User 2")
@@ -182,19 +192,28 @@ def handle_command(client_socket, command):
         if message:
             send_private_message(message, client_socket, recipient)
         else:
-            client_socket.send(f"{timestamp} [SERVER] Usage: /whisper <username> <message>".encode('utf-8'))
+            client_socket.send(format_message(
+                MessageType.ERROR,
+                "Usage: /whisper <username> <message>"
+            ).encode('utf-8'))
             return True
 
     elif cmd == '/exit':
         # Client wants to exit - this will be handled in the main loop
         # Just send a confirmation
-        client_socket.send(f"{timestamp} [SERVER] Disconnecting...".encode('utf-8'))
+        client_socket.send(format_message(
+            MessageType.SERVER,
+            "Disconnecting..."
+        ).encode('utf-8'))
         return False  # Let the client close the connection
 
     elif cmd == '/nick':
         # Change username
         if not args:
-            client_socket.send(f"{timestamp} [SERVER] Usage: /nick <new_username>".encode('utf-8'))
+            client_socket.send(format_message(
+                MessageType.ERROR,
+                "Usage: /nick <new_username>"
+            ).encode('utf-8'))
             return True
 
         new_username = args.strip()
@@ -202,7 +221,10 @@ def handle_command(client_socket, command):
         # Check if username is already taken
         for _, (_, user) in clients.items():
             if user == new_username:
-                client_socket.send(f"{timestamp} [SERVER] Username '{new_username}' is already taken.".encode('utf-8'))
+                client_socket.send(format_message(
+                    MessageType.ERROR,
+                    f"Username '{new_username}' is already taken."
+                ).encode('utf-8'))
                 return True
 
         # Update username
@@ -210,17 +232,23 @@ def handle_command(client_socket, command):
         clients[client_socket] = (clients[client_socket][0], new_username)
 
         # Notify the client
-        client_socket.send(f"{timestamp} [SERVER] Your username has been changed to '{new_username}'.".encode('utf-8'))
+        client_socket.send(format_message(
+            MessageType.SERVER,
+            f"Your username has been changed to '{new_username}'."
+        ).encode('utf-8'))
 
         # Notify other clients
         if old_username:
-            broadcast_message(f"[SERVER] User '{old_username}' is now known as '{new_username}'.", client_socket)
+            broadcast_message(f"User '{old_username}' is now known as '{new_username}'.", client_socket, MessageType.USER_EVENT)
         else:
-            broadcast_message(f"[SERVER] User {username} is now known as '{new_username}'.", client_socket)
+            broadcast_message(f"User {username} is now known as '{new_username}'.", client_socket, MessageType.USER_EVENT)
 
     else:
         # Unknown command
-        client_socket.send(f"{timestamp} [SERVER] Unknown command: {cmd}. Type /help for available commands.".encode('utf-8'))
+        client_socket.send(format_message(
+            MessageType.ERROR,
+            f"Unknown command: {cmd}. Type /help for available commands."
+        ).encode('utf-8'))
 
     return True
 
@@ -250,22 +278,29 @@ def handle_new_connection(server_socket):
     client_id = f"{client_address[0]}:{client_address[1]}"
     clients[client_socket] = (client_address, default_username)
 
-    # No need to mark as pending since we've assigned a default username
-    # But we'll still allow the user to change it
-
-    print(f"[+] Accepted connection from {client_id} (assigned username: {default_username})")
+    # Log the new connection on server side only
+    logger.info(f"Accepted connection from {client_id} (assigned username: {default_username})")
 
     # Send a welcome message to the new client
-    timestamp = get_timestamp()
-    welcome_message = f"{timestamp} [SERVER] Welcome to the TCP Chat Server! There are {len(clients)} clients connected."
+    welcome_message = format_message(
+        MessageType.SERVER,
+        f"Welcome to the TCP Chat Server! There are {len(clients)} clients connected."
+    )
     client_socket.send(welcome_message.encode('utf-8'))
 
     # Inform the user of their default username and how to change it
-    username_message = f"{timestamp} [SERVER] You have been assigned the username '{default_username}'. You can change it using the /nick command."
+    username_message = format_message(
+        MessageType.SERVER,
+        f"You have been assigned the username '{default_username}'. You can change it using the /nick command."
+    )
     client_socket.send(username_message.encode('utf-8'))
 
     # Notify other clients about the new user
-    broadcast_message(f"[SERVER] User '{default_username}' has joined the chat.", client_socket)
+    broadcast_message(
+        f"User '{default_username}' has joined the chat.",
+        client_socket,
+        MessageType.USER_EVENT
+    )
 
     return client_socket
 
@@ -281,6 +316,7 @@ def handle_client_message(client_socket):
     """
     client_address = clients[client_socket][0]
     client_id = f"{client_address[0]}:{client_address[1]}"
+    username = get_username(client_socket)
 
     try:
         # Receive data from the client
@@ -295,24 +331,21 @@ def handle_client_message(client_socket):
 
         # Check if this is a command
         if message.startswith('/'):
-            print(f"[>] Command from {get_username(client_socket)}: {message}")
+            # Log command on server side only
+            logger.info(f"Command from {username}: {message}")
             handle_command(client_socket, message)
             return True
 
-        # Regular message
-        print(f"[>] Message from {get_username(client_socket)}: {message}")
-
-        # Format the message with the username
-        username = get_username(client_socket)
-        formatted_message = f"[{username}] {message}"
+        # Regular message - log on server side only
+        logger.info(f"Message from {username}: {message}")
 
         # Broadcast the message to all other clients
-        broadcast_message(formatted_message, client_socket)
+        broadcast_message(message, client_socket, MessageType.CHAT)
 
         return True
 
     except Exception as e:
-        print(f"[!] Error handling client {client_id}: {e}")
+        logger.error(f"Error handling client {client_id}: {e}")
         return False
 
 def remove_client(client_socket):
@@ -329,22 +362,19 @@ def remove_client(client_socket):
 
         # Remove the client from our dictionaries
         del clients[client_socket]
-        if client_socket in pending_registrations:
-            del pending_registrations[client_socket]
 
         # Close the client socket
         client_socket.close()
 
-        # Notify everyone that the client has left
-        leave_message = f"[SERVER] User '{username}' has left the chat."
-        print(leave_message)
-        broadcast_message(leave_message)
+        # Notify everyone that the client has left - server-side log only
+        logger.info(f"User '{username}' has left the chat. {len(clients)} clients remaining.")
 
-        print(f"[-] Connection with {username} closed. {len(clients)} clients remaining.")
+        # Broadcast to other clients
+        broadcast_message(f"User '{username}' has left the chat.", None, MessageType.USER_EVENT)
 
 def main():
     """Main function to start the server."""
-    print(f"[*] Starting TCP Chat Server on {HOST}:{PORT}")
+    logger.info(f"Starting TCP Chat Server on {HOST}:{PORT}")
 
     # Create a TCP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -361,8 +391,8 @@ def main():
 
         # Listen for incoming connections (queue up to 5 connection requests)
         server_socket.listen(5)
-        print(f"[*] Listening for connections on {HOST}:{PORT}")
-        print(f"[*] Server started at {get_timestamp()}")
+        logger.info(f"Listening for connections on {HOST}:{PORT}")
+        logger.info(f"Server started at {get_timestamp()}")
 
         # List of sockets to monitor for input
         inputs = [server_socket]
@@ -398,11 +428,11 @@ def main():
                     remove_client(sock)
 
             except KeyboardInterrupt:
-                print("\n[!] Server interrupted by user")
+                logger.warning("Server interrupted by user")
                 break
 
     except Exception as e:
-        print(f"[!] Error: {e}")
+        logger.error(f"Error: {e}")
     finally:
         # Close all client sockets
         for sock in clients:
@@ -412,7 +442,7 @@ def main():
         if server_socket:
             server_socket.close()
 
-        print("[*] Server is shutting down")
+        logger.info("Server is shutting down")
 
 if __name__ == "__main__":
     main()
